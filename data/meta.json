@@ -1,0 +1,44 @@
+{
+  "S0": 100.0,
+  "K": 100.0,
+  "n_steps": 30,
+  "days_per_year": 252,
+  "substeps": 4,
+  "heston": {
+    "v0": 0.0136,
+    "kappa": 7.41,
+    "theta": 0.0421,
+    "sigma": 1.89,
+    "rho": -0.65
+  },
+  "n_paths": {
+    "train": 100000,
+    "val": 20000,
+    "test": 100000
+  },
+  "seeds": {
+    "heston": {
+      "train": 1,
+      "val": 2,
+      "test": 3
+    },
+    "gbm": {
+      "train": 11,
+      "val": 12,
+      "test": 13
+    }
+  },
+  "T": 0.11904761904761904,
+  "reference": {
+    "heston_price": 1.6121068607553468,
+    "heston_atm_iv": 0.11712590390313088,
+    "gbm_sigma": 0.11712590390313088,
+    "gbm_price": 1.6121068607538334
+  },
+  "nifty": {
+    "source": "Nifty_ML_Alpha data/indices.parquet (Yahoo ^NSEI closes)",
+    "first_close": "2010-01-04",
+    "last_close": "2026-09-30",
+    "windows": 4023
+  }
+}
