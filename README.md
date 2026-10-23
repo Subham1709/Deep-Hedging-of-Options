@@ -2,6 +2,9 @@
 
 [![tests](https://github.com/Subham1709/Deep-Hedging-of-Options/actions/workflows/tests.yml/badge.svg)](https://github.com/Subham1709/Deep-Hedging-of-Options/actions/workflows/tests.yml)
 
+**Live app: [subham-deep-hedging.streamlit.app](https://subham-deep-hedging.streamlit.app)**
+(hedge fresh paths live, see what the network learned, test it on real NIFTY 50; [app/README.md](app/README.md))
+
 A neural network learns how to hedge a short option position under transaction costs and
 stochastic volatility, following Buehler, Gonon, Teichmann & Wood, *Deep Hedging*
 (Quantitative Finance, 2019). It is compared with Black-Scholes, Heston and
@@ -66,4 +69,5 @@ src/deephedge/heston/          Heston model, QE Monte Carlo, BS, COS (from Hesto
                                + path_greeks.py: COS prices and Greeks for many (S, v) at once
 scripts/                       01 make data, 02 check data, 03 train, 04 evaluate
 docs/LEARNING_LOG.md           what, why and how, step by step
+app/                           Streamlit web app (numpy forward pass of the saved networks)
 ```
