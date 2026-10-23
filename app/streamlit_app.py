@@ -77,7 +77,7 @@ def fmt_table(rows: dict) -> pd.DataFrame:
     df = pd.DataFrame(rows).T
     return df.style.format({"mean P&L": "{:+.3f}", "std": "{:.3f}", "CVaR95": "{:.3f}",
                             "shares traded": "{:.2f}"}) \
-        .highlight_min(subset=["CVaR95"], color="#d4f4dd")
+        .highlight_min(subset=["CVaR95"], props="background-color:#d4f4dd;color:#151515;font-weight:600")
 
 
 weights, meta = load_weights(), load_meta()
