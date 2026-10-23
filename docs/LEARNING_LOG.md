@@ -223,7 +223,121 @@ the extreme.
 
 ---
 
-## Next: hyperparameters
+## Step 7. Hyperparameters (chosen by Subh, 22 Oct 2026: the defaults)
 
-Chosen by Subh before training (see the thread). Then: the network (`src/deephedge/model.py`),
-the training loop in PyTorch, and results against every benchmark above.
+| Choice | Value | Why |
+|---|---|---|
+| Network | feedforward, sees yesterday's position | the paper's "semi-recurrent" design; the previous position is the only memory a hedger needs (the market state is Markov) |
+| Size | 3 hidden layers x 64, ReLU | ~9k weights; enough for a smooth function of 3-4 inputs |
+| Loss | CVaR at 95% | the tail is what a risk manager cares about |
+| Costs | 0, 5, 20 bps, one model each | 0 bp is the sanity check, 20 bp is a liquid-but-not-free market |
+| Instruments | stock; stock + variance swap | incomplete vs (nearly) complete market |
+| Optimiser | Adam, lr 1e-3, batch 2,048 | standard; big batches because CVaR uses only the worst 5% of each batch (~100 paths) |
+| Length | up to 200 epochs, early stopping on validation CVaR, patience 20 | models stopped after 40-112 epochs |
+| Inputs | log(S/K), time to expiry, sqrt(v) (Heston) | all scaled to ~1 by fixed constants, so the model works on any path |
+
+---
+
+## Step 8. The network and training (`src/deephedge/model.py`, `train.py`)
+
+**One network for all dates.** The paper uses a separate network per date. Here one
+network takes time to expiry as an input. Same job, 30 times fewer weights, and it
+generalises across dates.
+
+**The rollout.** For a batch of paths, start with position 0 and call the network 30
+times, each time feeding back the position it just chose. The P&L is computed from the
+positions exactly as in step 1. Gradients flow back through all 30 decisions
+(backpropagation through time; the costs term is what couples the dates).
+
+**CVaR in the loss.** Rockafellar-Uryasev: `w + E[(L - w)^+] / (1 - a)`. The paper trains
+w as a parameter. I set w to the exact 95% quantile of the batch losses on every step
+(the minimiser of the formula), because with lr 1e-3 a trained w would need ~60 epochs
+just to get from 0 to 3. The gradient is then the gradient of the batch's empirical CVaR.
+Tests check that this equals the CVaR on a big sample, and that the torch P&L equals the
+numpy one.
+
+**Compute.** CPU only, ~4.5 s per epoch, three models trained in parallel, ~45 min total.
+
+---
+
+## Step 9. Results (`scripts/04_evaluate.py`, `results/results.md`)
+
+Test sets of 100k fresh paths. The fairest stock-only rule-based benchmark is a
+**no-trade band** around the benchmark delta (don't trade while within ±b of it, else
+trade to the band's edge), with b tuned on the validation set. ± = bootstrap std error.
+
+| Market | Costs | Deep hedge CVaR95 | Best benchmark | Improvement |
+|---|---|---|---|---|
+| GBM, stock | 0 bp | 0.524 | 0.584 (BS delta, band) | 10% |
+| GBM, stock | 20 bp | 1.031 | 1.157 (BS delta, band ±0.05) | 11% |
+| Heston, stock | 0 bp | 2.856 | 2.998 (min-var delta, band) | 5% |
+| Heston, stock | 20 bp | 3.301 | 3.447 (min-var delta, band ±0.05) | 4% |
+| Heston, stock + VS | 0 bp | 0.705 | 1.038 (Heston delta + VS) | 32% |
+| Heston, stock + VS | 20 bp | 1.153 | 1.734 (Heston delta + VS) | 33% |
+
+Every difference is many standard errors (0.002-0.009) from zero.
+
+**How to read it honestly.**
+
+1. **It beats delta hedging even without costs, and that is not a contradiction.** Delta
+   hedging is optimal for *variance* in *continuous* time. Here hedging is daily and the
+   objective is CVaR. The network has a *higher* standard deviation than BS delta on GBM
+   (0.285 vs 0.253) but a lower CVaR (0.524 vs 0.590): it gives up some spread to cut the
+   loss tail. Ask "better by which measure?" before believing any hedging claim. On
+   variance, delta hedging still wins without costs.
+2. **With costs, it learns to trade less.** Shares traded per path on Heston, stock only:
+   2.44 (0 bp), 1.58 (5 bp), 1.06 (20 bp), against 2.27 for the min-variance delta. At
+   20 bp the mean P&L, which is almost all cost drag, improves from -0.46 to -0.22. The middle panel of
+   `results/deep_hedge_results.png` shows why: at 20 bp the learned position depends on
+   what is already held (the dotted and solid red curves differ), which is a no-trade
+   band learned from data. Its edges depend on moneyness and time, so it beats the
+   fixed-width band.
+3. **The biggest gain is with the variance swap (32%).** The "complete" Heston hedge is
+   exact only in continuous time. With daily steps and vol-of-vol 1.89 it leaves a lot of
+   risk, and the network finds better combinations. Caveat: the variance swap trades for
+   free here (costs on the stock only). With real var-swap spreads this gain would shrink.
+   That's the first thing to fix in a next version.
+4. **Stock-only on Heston, gains are small (4-5%).** Most of the remaining risk is
+   volatility risk that no stock position can remove. The network can't beat the market's
+   incompleteness, only use the stock a little better.
+
+**Real NIFTY 50 (out-of-sample, model misspecification).** The GBM-trained networks, with
+moneyness rescaled by (training vol / 60-day historical vol), on 4,023 real windows:
+
+| Costs | Deep hedge CVaR95 | BS delta CVaR95 |
+|---|---|---|
+| 0 bp | 2.05 | 2.15 |
+| 5 bp | 2.20 | 2.34 |
+| 20 bp | 2.54 | 2.93 |
+
+The advantage survives on real data, and it's largest with costs (13% at 20 bp), which is
+the robust effect (trading less). Caution: overlapping windows; on the 134 non-overlapping
+windows the numbers are 2.77 vs 2.95 at 20 bp, a sample too small to be conclusive.
+
+---
+
+## Step 10. How to talk about this project
+
+**Resume line:**
+"Implemented deep hedging (Buehler et al., 2019) in PyTorch: a semi-recurrent feedforward
+policy trained on 100k Heston (SPX-calibrated) and GBM paths to minimise CVaR95 under
+proportional costs; cut tail loss 4-33% vs Black-Scholes, minimum-variance and
+variance-swap hedges with tuned no-trade bands, and 13% vs BS delta on real NIFTY 50 paths
+at 20 bps."
+
+**Questions to expect.**
+- Why is delta hedging not optimal with costs? (Trading every day pays the spread on
+  noise. Optimal policies have a no-trade region: Davis-Norman, Whalley-Wilmott.)
+- Your network beats delta hedging with zero costs. Is that a bug? (No: different
+  objective and discrete time. Show the std comparison.)
+- Why CVaR? Why does the batch size matter for it? (Only the worst 5% of a batch carries
+  gradient.)
+- Why feed yesterday's position? (With costs the optimal action depends on it.)
+- What is the minimum CVaR good for? (An indifference price: the premium that makes the
+  dealer's risk zero, above the model price when there are costs.)
+- How would you deploy this? (Retrain when the model is recalibrated; monitor real P&L
+  against the simulated distribution; the simulator's mistakes are the network's
+  mistakes.)
+- What would you do next? (Costs on the variance swap; train on NIFTY-calibrated
+  parameters once a chain is downloaded; Bates jumps in the simulator; compare against
+  Whalley-Wilmott's gamma-dependent band.)
