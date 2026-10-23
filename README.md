@@ -1,5 +1,7 @@
 # Deep Hedging
 
+[![tests](https://github.com/Subham1709/Deep-Hedging-of-Options/actions/workflows/tests.yml/badge.svg)](https://github.com/Subham1709/Deep-Hedging-of-Options/actions/workflows/tests.yml)
+
 A neural network learns how to hedge a short option position under transaction costs and
 stochastic volatility, following Buehler, Gonon, Teichmann & Wood, *Deep Hedging*
 (Quantitative Finance, 2019). It is compared with Black-Scholes, Heston and
